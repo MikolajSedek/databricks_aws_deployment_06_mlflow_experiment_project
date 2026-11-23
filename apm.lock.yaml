@@ -1,0 +1,57 @@
+lockfile_version: '1'
+apm_version: 0.35.0
+dependencies:
+- repo_url: github/awesome-copilot
+  name: pytest-coverage
+  host: github.com
+  resolved_commit: 8178d1939a203f691067073dcab2a3f1e14072d3
+  version: unknown
+  virtual_path: skills/pytest-coverage
+  is_virtual: true
+  package_type: claude_skill
+  deployed_files:
+  - .gemini/skills/pytest-coverage
+  - .gemini/skills/pytest-coverage/SKILL.md
+  - .github/copilot/skills/pytest-coverage
+  - .github/copilot/skills/pytest-coverage/SKILL.md
+  deployed_file_hashes:
+    .gemini/skills/pytest-coverage/SKILL.md: sha256:3778add8809c5aac585ab764090f46e7cfdb009ae3fc9fb308710538627970f9
+    .github/copilot/skills/pytest-coverage/SKILL.md: sha256:3778add8809c5aac585ab764090f46e7cfdb009ae3fc9fb308710538627970f9
+  content_hash: sha256:06481f4bbc6d80a52091ec9ba5856eb1dc5f80cbabb40fd4ad02aaea3085a0dc
+deployments:
+- kind: project-relative
+  target: gemini
+  value: .gemini/skills/pytest-coverage
+  runtime: null
+  scope: project
+  owners:
+  - github/awesome-copilot/skills/pytest-coverage
+  active_owner: github/awesome-copilot/skills/pytest-coverage
+  content_hash: null
+- kind: project-relative
+  target: gemini
+  value: .gemini/skills/pytest-coverage/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - github/awesome-copilot/skills/pytest-coverage
+  active_owner: github/awesome-copilot/skills/pytest-coverage
+  content_hash: sha256:3778add8809c5aac585ab764090f46e7cfdb009ae3fc9fb308710538627970f9
+- kind: project-relative
+  target: copilot
+  value: .github/copilot/skills/pytest-coverage
+  runtime: null
+  scope: project
+  owners:
+  - github/awesome-copilot/skills/pytest-coverage
+  active_owner: github/awesome-copilot/skills/pytest-coverage
+  content_hash: null
+- kind: project-relative
+  target: copilot
+  value: .github/copilot/skills/pytest-coverage/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - github/awesome-copilot/skills/pytest-coverage
+  active_owner: github/awesome-copilot/skills/pytest-coverage
+  content_hash: sha256:3778add8809c5aac585ab764090f46e7cfdb009ae3fc9fb308710538627970f9

@@ -1,0 +1,8 @@
+name: databricks_aws_deployment_06_mlflow_xgboost_experiment
+version: 0.1.0
+targets:
+  - copilot
+  - gemini
+dependencies:
+  apm:
+    - github/awesome-copilot/skills/pytest-coverage
