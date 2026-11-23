@@ -1,0 +1,78 @@
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        files: ^(src|tests)/
+      - id: end-of-file-fixer
+        files: ^(src|tests)/
+      - id: check-yaml
+        files: ^(databricks\.yml|\.pre-commit-config\.yaml|\.yamllint\.yml|apm\.yml|bandit\.yaml)$
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: detect-aws-credentials
+        args: ["--allow-missing-credentials"]
+
+  - repo: local
+    hooks:
+      - id: detect-secrets
+        name: detect-secrets
+        entry: uv run detect-secrets-hook --baseline .secrets.baseline
+        language: system
+        files: .*
+        exclude: ^(\.venv/|uv\.lock|apm\.lock\.yaml|\.secrets\.baseline)
+
+      - id: ruff-check
+        name: ruff check
+        entry: uv run ruff check --fix src/python tests
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: black
+        name: black
+        entry: uv run black --line-length=120 src/python tests
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: mypy
+        name: mypy
+        entry: uv run mypy src/python tests
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: bandit
+        name: bandit
+        entry: uv run bandit -c bandit.yaml -r src/python -ll -ii
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: bandit-secrets
+        name: bandit secret scanning
+        entry: uv run bandit -c bandit.yaml -r src/python -t B105,B106,B107 -l
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: interrogate
+        name: interrogate
+        entry: uv run interrogate -v --fail-under 95 src/python
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: codespell
+        name: codespell
+        entry: uv run codespell src/python tests README.md databricks.yml
+        language: system
+        pass_filenames: false
+
+      - id: yamllint
+        name: yamllint
+        entry: uv run yamllint -c .yamllint.yml databricks.yml .pre-commit-config.yaml bandit.yaml
+        language: system
+        types: [yaml]
+        pass_filenames: false

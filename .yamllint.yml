@@ -1,0 +1,22 @@
+---
+extends: default
+
+ignore: |
+  .venv/
+  .apm-local/
+  apm_modules/
+  .git/
+  .gemini/
+  .github/copilot/
+  .agents/
+  .claude/
+  .cursor/
+
+rules:
+  new-lines: disable
+  line-length:
+    max: 160
+    level: warning
+  document-start: disable
+  truthy:
+    allowed-values: ["true", "false", "on", "off"]

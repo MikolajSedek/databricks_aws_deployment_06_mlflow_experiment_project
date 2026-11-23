@@ -1,0 +1,67 @@
+name: Deploy Dev Environment
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'Target Databricks bundle environment (e.g. dev, prod)'
+        required: false
+        type: string
+        default: 'dev'
+      auto_deploy:
+        description: 'Auto-deploy bundle after tests pass (subject to environment approval gates)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  # ============================================================================
+  # STEP 0: PRE-COMMIT CHECKS
+  # Runs code formatting, linting (ruff, black, mypy), secret scanning,
+  # docstring coverage (interrogate), spell checking, and yaml validation.
+  # ============================================================================
+  precommit:
+    name: Pre-commit Quality & Security Checks
+    uses: ./.github/workflows/dpl-01-precommit.yml
+    secrets: inherit
+
+  # ============================================================================
+  # STEP 1: PYSPARK UNIT TESTING & COVERAGE
+  # Configures Java 17 Temurin VM and uv Python virtual environment to execute
+  # the pytest suite with local SparkSession and code coverage checks.
+  # ============================================================================
+  test:
+    name: PySpark Unit Tests & Coverage
+    needs: [ precommit ]
+    uses: ./.github/workflows/dpl-02-test.yml
+    secrets: inherit
+    with:
+      python_version: '3.10'
+      java_version: '17'
+
+  # ============================================================================
+  # STEP 2: DATABRICKS ASSET BUNDLE DEPLOYMENT
+  # Validates bundle schema and deploys the Lakeflow Declarative Pipelines and
+  # multi-task workflows to the target Databricks workspace under GitHub
+  # Environment protection rules on main or when authorized via workflow_dispatch.
+  # ============================================================================
+  deploy:
+    name: Databricks Bundle Validate & Deploy
+    needs: [ test ]
+    if: github.ref == 'refs/heads/main' && (github.event_name != 'workflow_dispatch' || inputs.auto_deploy == true)
+    uses: ./.github/workflows/dpl-03-deploy.yml
+    secrets: inherit
+    with:
+      target: ${{ inputs.target || 'dev' }}
+      environment: ${{ inputs.target || 'dev' }}

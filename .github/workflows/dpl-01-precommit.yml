@@ -1,0 +1,60 @@
+name: Pre-commit Quality & Security Checks
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: 'Python version'
+        type: string
+        required: false
+        default: '3.10'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  precommit:
+    name: Pre-commit Quality & Security Checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # Setup uv using official Astral GitHub action with lockfile caching
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      # Cache Pre-commit Hook Environments (~/.cache/pre-commit)
+      - name: Cache Pre-commit Environments
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit-${{ runner.os }}-${{ hashFiles('.pre-commit-config.yaml') }}
+          restore-keys: |
+            pre-commit-${{ runner.os }}-
+
+      # Install project dependencies including dev extra (pre-commit, ruff, black, mypy, bandit, detect-secrets, yamllint)
+      - name: Install dependencies with uv
+        run: uv sync --frozen --all-extras
+
+      # Run pre-commit hooks via uv across all files
+      - name: Run Pre-commit Hooks
+        run: uv run pre-commit run --all-files
+
+      # Publish pre-commit step summary
+      - name: Add Pre-commit Summary to Job Summary
+        if: always()
+        run: |
+          echo "### Pre-commit Quality & Security Checks" >> $GITHUB_STEP_SUMMARY
+          echo "- **Ruff Linter & Formatter**: Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Black Code Formatter**: Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Mypy Static Typing**: Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bandit Security Audit & Secret Detection**: Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Yelp detect-secrets & AWS Key Detection**: Validated" >> $GITHUB_STEP_SUMMARY
+          echo "- **Interrogate Docstrings**: $\ge 95\%$ coverage" >> $GITHUB_STEP_SUMMARY
+          echo "- **Codespell & Yamllint**: Clean" >> $GITHUB_STEP_SUMMARY

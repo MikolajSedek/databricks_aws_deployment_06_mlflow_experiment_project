@@ -1,0 +1,79 @@
+name: Databricks Bundle Validate & Deploy
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        description: 'Databricks bundle target environment (e.g. dev, prod)'
+        type: string
+        required: false
+        default: 'dev'
+      environment:
+        description: 'Target GitHub Environment name for approvals'
+        type: string
+        required: false
+        default: 'dev'
+      databricks_cli_version:
+        description: 'Databricks CLI version'
+        type: string
+        required: false
+        default: 'latest'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  deploy:
+    name: Databricks Bundle Validate & Deploy
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    env:
+      # Databricks OAuth Service Principal and Host Authentication (injected exclusively from GitHub Actions Secrets)
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_ACCOUNT_ID: ${{ secrets.DATABRICKS_ACCOUNT_ID }}
+      DATABRICKS_CLIENT_ID: ${{ secrets.DATABRICKS_CLIENT_ID || secrets.DATABRICKS_SERVICE_PRINCIPAL_ID }}
+      DATABRICKS_CLIENT_SECRET: ${{ secrets.DATABRICKS_CLIENT_SECRET || secrets.DATABRICKS_SERVICE_PRINCIPAL_SECRET }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # Setup uv using official Astral GitHub action with lockfile caching
+      # uv is required by Databricks CLI to build the Python wheel package (artifacts.default.build)
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      # Install project dependencies with uv including dev extras
+      - name: Install dependencies with uv
+        run: uv sync --frozen --all-extras
+
+      # Setup Databricks CLI using official Databricks action
+      - name: Setup Databricks CLI
+        uses: databricks/setup-cli@main
+        with:
+          version: ${{ inputs.databricks_cli_version == 'latest' && '' || inputs.databricks_cli_version }}
+
+      # Validate Databricks Asset Bundle schema, variables, and resources
+      - name: Databricks Bundle Validate
+        run: |
+          databricks bundle validate --target ${{ inputs.target }}
+
+      # Deploy bundle resources (MLflow 3 & XGBoost Databricks Workflow and wheel artifact)
+      - name: Databricks Bundle Deploy
+        run: |
+          databricks bundle deploy --target ${{ inputs.target }}
+
+      # Publish deployment summary to GitHub Job Summary
+      - name: Add Deployment Summary to Job Summary
+        if: always()
+        run: |
+          echo "### Databricks Asset Bundle Deployment (\`${{ inputs.target }}\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Workspace Host**: \`${{ env.DATABRICKS_HOST }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Bundle Target**: \`${{ inputs.target }}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **Wheel Artifact Build**: Executed via \`uv build --wheel\`" >> $GITHUB_STEP_SUMMARY
+          echo "- **End-to-End MLflow 3 & XGBoost Workflow Job**: \`[${{ inputs.target }}] End-to-End MLflow 3 & XGBoost Experimentation Workflow\` deployed" >> $GITHUB_STEP_SUMMARY

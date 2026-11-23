@@ -1,0 +1,134 @@
+bundle:
+  name: databricks_mlflow_xgboost_experiment
+
+artifacts:
+  default:
+    type: whl
+    build: uv build --wheel
+    path: .
+
+variables:
+  catalog:
+    description: "Target Unity Catalog name hosting upstream Project 05 Gold views and ML schemas"
+    default: "data_engineering_dev"
+  experiment_root:
+    description: "Workspace directory isolating MLflow 3 experiments per bundle target"
+    default: "/Shared/mlflow_xgboost/${bundle.target}"
+  trace_warehouse_id:
+    description: "Serverless SQL Warehouse ID resolved dynamically for UC OpenTelemetry trace queries"
+    lookup:
+      warehouse: "Serverless Starter Warehouse"
+
+resources:
+  jobs:
+    mlflow_xgboost_end_to_end_workflow:
+      name: "[${bundle.target}] End-to-End MLflow 3 & XGBoost Experimentation Workflow"
+      description: >-
+        Prepares Unity Catalog Feature Store & OpenTelemetry Trace tables from Project 05 Gold ML views,
+        executes Spark-distributed Optuna + MLflow 3 XGBoost classification (customer churn) and regression
+        (product affinity) experiments with SHAP explainability artifacts, promotes @Champion/@Challenger
+        model versions in Unity Catalog, and runs distributed Spark batch scoring with historical scoring_date lineage.
+      performance_target: STANDARD
+      environments:
+        - environment_key: mlflow_xgboost_serverless_env
+          spec:
+            environment_version: "4"
+            dependencies:
+              - "${workspace.root_path}/artifacts/.internal/databricks_mlflow_xgboost_experiment-0.1.0-py3-none-any.whl"
+              - "click>=8.1.7"
+              - "mlflow>=3.14.0"
+              - "xgboost>=2.1.3,<=3.4.1"
+              - "optuna>=4.1.0"
+              - "scikit-learn>=1.5.0"
+              - "shap>=0.46.0"
+              - "matplotlib>=3.9.0"
+      tasks:
+        - task_key: prepare_uc_feature_tables
+          description: "Read Project 05 Gold ML views, engineer leak-free features and label spines, and upsert UC Feature Tables."
+          environment_key: mlflow_xgboost_serverless_env
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          python_wheel_task:
+            package_name: databricks_mlflow_xgboost_experiment
+            entry_point: prepare-uc-features
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--churn-experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_customer_churn_uc"
+              - "--affinity-experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_product_affinity_uc"
+              - "--trace-warehouse-id"
+              - "${var.trace_warehouse_id}"
+
+        - task_key: train_customer_churn_xgboost
+          description: "Run Spark-distributed Optuna + MLflow 3 XGBClassifier HPO study, log SHAP artifacts & UC traces, and promote @Champion in UC."
+          depends_on:
+            - task_key: prepare_uc_feature_tables
+          environment_key: mlflow_xgboost_serverless_env
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          python_wheel_task:
+            package_name: databricks_mlflow_xgboost_experiment
+            entry_point: train-churn-xgboost
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_customer_churn_uc"
+              - "--trace-warehouse-id"
+              - "${var.trace_warehouse_id}"
+
+        - task_key: train_product_affinity_xgboost
+          description: "Run Spark-distributed Optuna + MLflow 3 XGBRegressor HPO study, log SHAP artifacts & UC traces, and promote @Champion in UC."
+          depends_on:
+            - task_key: prepare_uc_feature_tables
+          environment_key: mlflow_xgboost_serverless_env
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          python_wheel_task:
+            package_name: databricks_mlflow_xgboost_experiment
+            entry_point: train-affinity-xgboost
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_product_affinity_uc"
+              - "--trace-warehouse-id"
+              - "${var.trace_warehouse_id}"
+
+        - task_key: batch_score_champion_predictions
+          description: "Execute distributed Spark batch inference using @Champion XGBoost models into ml_predictions with scoring_date history."
+          depends_on:
+            - task_key: train_customer_churn_xgboost
+            - task_key: train_product_affinity_xgboost
+          environment_key: mlflow_xgboost_serverless_env
+          max_retries: 0
+          retry_on_timeout: false
+          disable_auto_optimization: true
+          python_wheel_task:
+            package_name: databricks_mlflow_xgboost_experiment
+            entry_point: batch-score-predictions
+            parameters:
+              - "--catalog"
+              - "${var.catalog}"
+              - "--churn-experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_customer_churn_uc"
+              - "--affinity-experiment-path"
+              - "${var.experiment_root}/mlflow_xgboost_product_affinity_uc"
+              - "--trace-warehouse-id"
+              - "${var.trace_warehouse_id}"
+
+targets:
+  dev:
+    mode: development
+    default: true
+    workspace:
+      profile: dev
+      root_path: ~/.bundle/${bundle.name}/${bundle.target}
+    variables:
+      catalog: "data_engineering_dev"
+      experiment_root: "/Workspace/Users/${workspace.current_user.userName}/mlflow_xgboost/${bundle.target}"

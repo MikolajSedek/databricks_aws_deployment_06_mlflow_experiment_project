@@ -1,0 +1,80 @@
+name: PySpark & MLflow 3 Unit Tests & Coverage
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: 'Python version'
+        type: string
+        required: false
+        default: '3.10'
+      java_version:
+        description: 'Java JDK version for PySpark JVM execution'
+        type: string
+        required: false
+        default: '17'
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+
+jobs:
+  test:
+    name: PySpark & MLflow 3 Unit Tests & Coverage
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v7
+
+      # Setup Java JDK (required by PySpark SparkSession local driver runtime)
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: ${{ inputs.java_version }}
+
+      # Setup uv using official Astral GitHub action with lockfile caching
+      - name: Setup uv
+        uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+          cache-dependency-glob: 'uv.lock'
+
+      # Install project dependencies with uv including dev extras (pyspark, mlflow, xgboost, optuna, pytest, pytest-cov)
+      - name: Install dependencies with uv
+        run: uv sync --frozen --all-extras
+
+      # Validate building python wheel artifact required by Databricks Asset Bundle
+      - name: Verify Wheel Build
+        run: uv build --wheel
+
+      # Execute pytest suite in parallel using bounded xdist loadgroup scheduling (3 Spark JVMs + 1 non-Spark worker)
+      - name: Run PySpark & MLflow 3 Pytest Suite with Coverage
+        run: |
+          uv run pytest -v \
+            -n 4 --dist=loadgroup \
+            --cov=src/python \
+            --cov-report=term-missing \
+            --cov-report=xml:coverage.xml \
+            tests/
+
+      # Upload coverage report artifact
+      - name: Upload Coverage Artifact
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: pyspark-mlflow-test-coverage
+          path: |
+            coverage.xml
+          retention-days: 7
+
+      # Attach PySpark test & coverage summary to GitHub Job Summary
+      - name: Add Test Summary to Job Summary
+        if: always()
+        run: |
+          echo "### PySpark & MLflow 3 Unit Tests & Coverage Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- **Java Virtual Machine**: Temurin JDK ${{ inputs.java_version }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Python Environment**: Managed via uv lockfile" >> $GITHUB_STEP_SUMMARY
+          echo "- **Wheel Package Build**: Verified (\`dist/*.whl\`)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Execution**: Passed parallel pytest-xdist loadgroup test suites" >> $GITHUB_STEP_SUMMARY
