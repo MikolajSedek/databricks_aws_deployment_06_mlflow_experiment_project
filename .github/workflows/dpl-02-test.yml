@@ -77,4 +77,4 @@ jobs:
           echo "- **Java Virtual Machine**: Temurin JDK ${{ inputs.java_version }}" >> $GITHUB_STEP_SUMMARY
           echo "- **Python Environment**: Managed via uv lockfile" >> $GITHUB_STEP_SUMMARY
           echo "- **Wheel Package Build**: Verified (\`dist/*.whl\`)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Test Execution**: Passed MLflow 3 + XGBoost + Unity Catalog Feature Store + Batch Scoring + Click CLI test suites (pytest-xdist loadgroup)" >> $GITHUB_STEP_SUMMARY
+          echo "- **Test Execution**: Passed parallel pytest-xdist loadgroup test suites" >> $GITHUB_STEP_SUMMARY

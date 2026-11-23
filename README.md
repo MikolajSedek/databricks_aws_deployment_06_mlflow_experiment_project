@@ -77,7 +77,7 @@ flowchart TB
 ├── .github/workflows/
 │   ├── deploy-dev.yml                       # End-to-end CI/CD orchestration (Pre-commit -> Pytest -> DAB Deploy)
 │   ├── dpl-01-precommit.yml                 # Reusable quality, typing, docstring & secret-scanning workflow
-│   ├── dpl-02-test.yml                      # Reusable Java 17 + PySpark + MLflow 3 unit test & coverage workflow
+│   ├── dpl-02-test.yml                      # Reusable Java 17 + parallel pytest-xdist PySpark/MLflow 3 test workflow
 │   └── dpl-03-deploy.yml                    # Reusable Databricks Asset Bundle validation & deployment workflow
 ├── .gemini/skills/                          # Authoritative Databricks, MLflow 3, XGBoost & Functional PySpark skills
 ├── src/python/
@@ -105,7 +105,7 @@ flowchart TB
 │       ├── train_affinity_xgboost.py        # Task 2b (Click CLI): Product Affinity XGBRegressor training & UC promotion
 │       └── batch_score_predictions.py       # Task 3 (Click CLI): Distributed Spark batch scoring of @Champion models
 ├── tests/
-│   ├── conftest.py                          # Local PySpark Session & temporary SQLite MLflow 3 tracking fixtures
+│   ├── conftest.py                          # Worker-isolated SparkSession, cloned MLflow 3 SQLite & xdist loadgroup hooks
 │   ├── modules/
 │   │   ├── utils/test_config_and_metadata.py        # Config FQNs, leak-free contracts & UC metadata DDLs
 │   │   ├── features/test_feature_engineering.py     # PySpark feature contracts, label spines & UC Feature Table sync
@@ -218,12 +218,37 @@ uv run python -m src.python.pipelines.batch_score_predictions \
 
 ## 6. Local Development, Testing & Quality Gates
 
+### 6.1 Parallel Testing Architecture (`pytest-xdist` + `--dist=loadgroup`)
+
+The 89-test suite is designed for **process-level parallelism** via `pytest-xdist` (`-n 4 --dist=loadgroup`), isolating global MLflow tracking/tracing state, matplotlib figures, mocks, and Spark JVMs across workers while keeping Spark JVM memory bounded:
+
+| `xdist_group` | Tests | Spark JVMs | Purpose |
+| :--- | :---: | :---: | :--- |
+| `@non_spark` (default) | 67 | 0 | Pure Python unit tests (61) + isolated MLflow 3 SQLite tests (6) |
+| `@spark_unit` | 20 | 1 | Feature engineering, datasets, scoring, metadata & leakage Spark unit tests sharing one local JVM |
+| `@spark_churn_e2e` | 1 | 1 | Customer Churn Spark Optuna + TreeSHAP + PyFunc + Spark UDF E2E test |
+| `@spark_affinity_e2e` | 1 | 1 | Product Affinity Spark Optuna + TreeSHAP + UBJ + Spark UDF E2E test |
+
+**Key isolation & speed optimizations in [`tests/conftest.py`](tests/conftest.py):**
+- **Bounded Spark Isolation**: Each Spark worker initializes a dedicated `local[1]` JVM (`spark.driver.memory=1g`) with worker-scoped `spark.sql.warehouse.dir` and `spark.local.dir` under `tmp_path_factory`.
+- **Pre-Migrated MLflow 3 SQLite Template**: Alembic tracking and registry migrations execute once per worker (`_mlflow_template_db`) and are atomically cloned per test via `sqlite3.Connection.backup()`.
+- **Default Tracing Suppression**: `_isolate_mlflow_tracing_by_default` keeps MLflow tracing disabled for non-MLflow tests so traced helpers never write to `./mlflow.db` in the repo root or trigger cross-worker SQLite lock contention.
+- **Registered Pytest Markers** (`pyproject.toml`): `spark`, `mlflow`, and `slow` allow fast targeted subsets during local iteration.
+
+### 6.2 Running Tests & Quality Gates
+
 ```bash
 # 1. Synchronize virtual environment with all runtime & dev dependencies
 uv sync --extra dev
 
-# 2. Run the unit test suite with line-by-line coverage verification (89 tests, 98% module coverage)
-uv run pytest -v --cov=src/python/modules --cov-report=term-missing tests/
+# 2a. Full parallel test suite with bounded Spark JVMs & coverage (89 tests, matches CI in dpl-02-test.yml)
+uv run pytest -n 4 --dist=loadgroup --cov=src/python --cov-report=term-missing tests/
+
+# 2b. Fast non-Spark test suite (67 tests, ~22s, zero JVM startup; run single-process to avoid worker boot overhead)
+uv run pytest -m "not spark"
+
+# 2c. Ultra-fast pure Python unit tests (61 tests, ~4.5s, ideal for tight inner-loop development)
+uv run pytest -m "not spark and not mlflow"
 
 # 3. Run static analysis, formatting, strict typing, security, secret & docstring checks
 uv run ruff check src/python tests

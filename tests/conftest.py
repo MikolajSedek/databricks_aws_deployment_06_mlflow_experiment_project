@@ -8,6 +8,7 @@ import sys
 from collections.abc import Callable, Generator
 from contextlib import closing
 from pathlib import Path
+from typing import Any
 
 import mlflow
 import pytest
@@ -25,6 +26,35 @@ for candidate_path in (str(_SRC_ROOT), str(_REPO_ROOT)):
 
 os.environ["PYSPARK_PYTHON"] = sys.executable
 os.environ["PYSPARK_DRIVER_PYTHON"] = sys.executable
+
+
+@pytest.hookimpl(trylast=True)
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Group ungrouped non-Spark tests under `@non_spark` and bridge pytest 9.2 `Node._id` for xdist `loadgroup`.
+
+    In pytest >= 9.2, `Node.nodeid` reads `Node._id` instead of `Node._nodeid`, whereas pytest-xdist 3.8
+    mutates `item._nodeid` when applying `--dist=loadgroup`. Synchronizing `item._id` ensures `@<group>`
+    suffixes are preserved for `LoadGroupScheduling` so Spark JVMs stay strictly bounded to their groups.
+    """
+    if not config.getoption("loadgroup", False):
+        return
+
+    coerce_fn: Callable[[str], Any] | None = None
+    try:
+        from _pytest.nodes import coerce_node_id
+
+        coerce_fn = coerce_node_id
+    except ImportError:
+        coerce_fn = None
+
+    for item in items:
+        raw_nodeid = str(getattr(item, "_nodeid", item.nodeid))
+        has_group_suffix = raw_nodeid.rfind("@") > raw_nodeid.rfind("]")
+        target_nodeid = raw_nodeid if has_group_suffix else f"{item.nodeid}@non_spark"
+        if target_nodeid != item.nodeid:
+            item._nodeid = target_nodeid  # type: ignore[attr-defined]
+            if coerce_fn is not None and hasattr(item, "_id"):
+                item._id = coerce_fn(target_nodeid)
 
 
 @pytest.fixture(autouse=True)
