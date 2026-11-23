@@ -44,7 +44,7 @@ def test_ml_project_config_fqn_properties(attr_name: str, expected_fqn: str) -> 
 
 
 def test_default_config_and_leak_free_feature_contracts() -> None:
-    """Verify default catalog, alias URI helper, and strict disjointness from leaky upstream formula inputs."""
+    """Verify default catalog, alias URI helper, and strict set separation from leaky upstream formula inputs."""
     cfg = MLProjectConfig(catalog="test_cat")
     assert cfg.trace_sql_warehouse_id is None
     assert cfg.model_alias_uri(cfg.churn_model_fqn, "Champion") == (

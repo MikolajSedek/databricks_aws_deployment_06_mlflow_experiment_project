@@ -97,4 +97,4 @@ exclude = ["tests", ".venv", "apm_modules"]
 
 [tool.codespell]
 skip = ".git,.venv,uv.lock,apm.lock.yaml,apm_modules,secrets.txt"
-ignore-words-list = "nd,te,ot,hist,ines,bu"
+ignore-words-list = "nd,te,ot,hist,ines,bu,fpr,disjointness"
